@@ -28,6 +28,9 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Instalar dependências (Flet)
+        run: pip install -r requirements.txt
+
       - name: Fabricar o Aplicativo (APK)
         run: flet build apk
 
