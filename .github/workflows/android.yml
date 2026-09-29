@@ -21,7 +21,7 @@ jobs:
       - name: Instalar Flutter (Motor do Flet)
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.2'
+          flutter-version: '3.24.0'
           channel: 'stable'
 
       - name: Instalar Python
