@@ -1,0 +1,38 @@
+name: Construir APK Android
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pegar meus arquivos
+        uses: actions/checkout@v4
+
+      - name: Instalar Java (Requisito do Android)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Instalar Flutter (Motor do Flet)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Instalar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Fabricar o Aplicativo (APK)
+        run: flet build apk
+
+      - name: Salvar o arquivo APK para download
+        uses: actions/upload-artifact@v4
+        with:
+          name: ControleFinanceiro-APK
+          path: build/apk/**/*.apk
