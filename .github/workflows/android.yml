@@ -1,4 +1,4 @@
-name: Construir APK Android
+name: Construir e Publicar APK
 
 on:
   push:
@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # Necessário para criar o Release automaticamente
     steps:
       - name: Pegar meus arquivos
         uses: actions/checkout@v4
@@ -35,8 +37,12 @@ jobs:
       - name: Fabricar o Aplicativo (APK)
         run: flet build apk
 
-      - name: Salvar o arquivo APK para download
-        uses: actions/upload-artifact@v4
+      - name: Publicar APK no Releases
+        uses: softprops/action-gh-release@v2
         with:
-          name: ControleFinanceiro-APK
-          path: build/apk/**/*.apk
+          tag_name: v1.0.${{ github.run_number }}
+          name: "Versão 1.0.${{ github.run_number }}"
+          body: "Nova versão automática do aplicativo de Controlo Financeiro gerada via GitHub Actions."
+          files: build/apk/**/*.apk
+          draft: false
+          prerelease: false
