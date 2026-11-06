@@ -35,14 +35,16 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Fabricar o Aplicativo (APK)
-        run: flet build apk
+        # O parâmetro --product define o nome exato que aparece debaixo do ícone no Android
+        # O parâmetro --org define a assinatura única do seu app (pode deixar como está)
+        run: flet build apk --product "Oria" --org "com.luizomachado"
 
       - name: Publicar APK no Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: "Versão 1.0.${{ github.run_number }}"
-          body: "Nova versão automática do aplicativo de Controlo Financeiro gerada via GitHub Actions."
+          tag_name: v2.0.${{ github.run_number }}
+          name: "Oria v2.0.${{ github.run_number }}"
+          body: "Nova versão do Oria gerada automaticamente via GitHub Actions. Inclui novo design, modo escuro, Cofre e proteção por PIN."
           files: build/apk/**/*.apk
           draft: false
           prerelease: false
