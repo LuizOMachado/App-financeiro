@@ -20,3 +20,45 @@ O código está dividido em módulos para isolar responsabilidades:
 - **`logic.py`:** Concentra as regras de negócio, validações, hash criptográfico de PIN, cálculos matemáticos, formatação de moedas e datas, e geradores de períodos.
 - **`main.py`:** Contém a interface gráfica completa orientada a objetos (classe `OriaApp`), roteamento nativo, gerenciamento de estados, tela de bloqueio e componentes visuais.
 - **`requirements.txt`:** Lista de dependências e versões compatíveis do projeto.
+
+## Pré-requisitos
+
+Para executar este projeto em sua máquina local, você precisará ter instalado:
+
+* Python (versão 3.11 ou superior recomendada)
+* Git
+
+---
+## Como Executar o Projeto Localmente
+
+Siga os passos abaixo para configurar o ambiente e rodar a aplicação no seu computador:
+
+1. Clone este repositório ou baixe os arquivos para uma pasta local:
+   
+   git clone https://github.com/LuizOMachado/App-financeiro.git
+ 
+   cd App-financeiro
+2. Instale as dependências listadas no projeto:
+   
+   pip install -r requirements.txt
+
+3. Execute o aplicativo
+
+   flet run main.py
+
+## Baixar e Instalar no Celular (Android)
+O arquivo instalador (.apk) do aplicativo encontra-se disponível diretamente na seção Releases deste repositório no GitHub.
+
+Para utilizar a aplicação no seu telemóvel, basta seguir os passos abaixo:
+
+Aceda à página principal do repositório no GitHub e localize a aba Releases
+
+Descarregue o arquivo .apk 
+
+Transfira o arquivo para o seu smartphone Android.
+
+Toque no arquivo descarregado para iniciar a instalação.
+
+Caso o sistema operacional exiba um aviso de segurança por se tratar de um aplicativo externo à loja oficial, selecione a opção para permitir a instalação de fontes desconhecidas ou clique em "Instalar mesmo assim".
+   
+
