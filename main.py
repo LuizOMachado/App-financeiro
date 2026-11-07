@@ -1,4 +1,20 @@
+"""
+Oria · interface (Flet 0.25.2, Material 3).
 
+Esta camada só desenha a tela e repassa ações do usuário para `logic`; não há
+regra de negócio nem SQL aqui.
+
+Como o estado e a renderização funcionam:
+- Nada de variáveis globais: privacidade, mês, ano e tema são atributos de `OriaApp`.
+- Cada aba é um objeto (`ViewOria`) construído UMA vez. Trocar de aba só liga/desliga
+  `visible`; os dados são relidos apenas quando mudaram (`desatualizada`).
+- Mudanças pequenas atualizam só o controle afetado (texto, card, lista) com
+  `control.update()`, em vez de reconstruir a tela inteira.
+- As cores usam os papéis do tema (ft.Colors.PRIMARY, SURFACE...), então alternar
+  claro/escuro troca a paleta toda sem reconstruir nada.
+  Mapeamento semântico do tema:  secondary = entradas, error = gastos,
+  tertiary = Cofre/investimentos, primary = marca.
+"""
 from __future__ import annotations
 
 import functools
@@ -320,7 +336,8 @@ class ViewOria(ft.Column):
         (self._moedas_dinamicas if dinamica else self._moedas_fixas).append(moeda)
         return moeda
 
-    def construir_linha(self, item: logic.ItemExtrato, mostrar_dia=False, ao_excluir=None) -> ft.Control:
+    def construir_linha(self, item: logic.ItemExtrato, mostrar_dia=False,
+                        ao_excluir=None, ao_editar=None) -> ft.Control:
         """Uma linha de lançamento. Usada pelo Início (agendadas) e pelo Extrato."""
         if item.categoria == "Entrada":
             cor, icone, prefixo, cor_valor = COR_ENTRADA, ft.Icons.ARROW_UPWARD_ROUNDED, "+ ", COR_ENTRADA
@@ -336,6 +353,11 @@ class ViewOria(ft.Column):
             detalhe += " · agendada"
 
         direita = [self.criar_moeda(item.valor, dinamica=True, prefixo=prefixo, tamanho=15, peso=700, cor=cor_valor)]
+        if ao_editar:
+            direita.append(ft.IconButton(
+                icon=ft.Icons.EDIT_OUTLINED, icon_size=20, icon_color=COR_SUAVE,
+                tooltip="Editar lançamento", on_click=lambda e: ao_editar(item),
+            ))
         if ao_excluir:
             direita.append(ft.IconButton(
                 icon=ft.Icons.DELETE_OUTLINE_ROUNDED, icon_size=20, icon_color=COR_SUAVE,
@@ -459,6 +481,7 @@ class RegistrarView(ViewOria):
         self.locais: list[logic.LocalDisponivel] = []
         self.locais_por_chave: dict[str, logic.LocalDisponivel] = {}
         self._local_preferido: tuple[str, str] | None = None
+        self._id_editando: Optional[int] = None
 
         self.seletor_tipo = ft.SegmentedButton(
             selected={"Entrada"},
@@ -512,13 +535,18 @@ class RegistrarView(ViewOria):
 
         self.botao_salvar = ft.FilledButton(
             text="Salvar lançamento", on_click=self.salvar, height=56, style=estilo_botao())
+        self.btn_cancelar_edicao = ft.TextButton(
+            "Cancelar edição", visible=False,
+            on_click=lambda e: self.cancelar_edicao(),
+        )
+        self.titulo_form = txt("Novo lançamento", 24, 700, espacamento=-0.3)
 
         self.pagina.content = ft.ResponsiveRow(
             [ft.Container(
                 col={"xs": 12, "md": 10, "lg": 8},
                 content=ft.Column(
                     [
-                        txt("Novo lançamento", 24, 700, espacamento=-0.3),
+                        self.titulo_form,
                         ft.Container(height=4),
                         self.seletor_tipo,
                         self.tf_valor,
@@ -527,6 +555,8 @@ class RegistrarView(ViewOria):
                         self.bloco_investimento,
                         ft.Container(height=4),
                         self.botao_salvar,
+                        ft.Row([self.btn_cancelar_edicao],
+                               alignment=ft.MainAxisAlignment.CENTER),
                     ],
                     spacing=14, horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
                 ),
@@ -634,10 +664,25 @@ class RegistrarView(ViewOria):
         else:
             instituicao, tipo = "", ""
         data_lancamento = self.data_escolhida
-        efetivada = logic.registrar_transacao(
-            self.tf_descricao.value, self.tf_valor.value, self.categoria,
-            data_lancamento, instituicao, tipo,
-        )
+
+        if self._id_editando is not None:
+            efetivada = logic.editar_transacao(
+                self._id_editando, self.tf_descricao.value, self.tf_valor.value,
+                self.categoria, data_lancamento, instituicao, tipo,
+            )
+            aviso = "Lançamento atualizado." if efetivada else f"Lançamento agendado para {data_lancamento:%d/%m/%Y}."
+            self._limpar_modo_edicao()
+        else:
+            efetivada = logic.registrar_transacao(
+                self.tf_descricao.value, self.tf_valor.value, self.categoria,
+                data_lancamento, instituicao, tipo,
+            )
+            if not efetivada:
+                aviso = f"Lançamento agendado para {data_lancamento:%d/%m/%Y}."
+            elif (data_lancamento.year, data_lancamento.month) != (self.app.ano, self.app.mes):
+                aviso = f"Lançamento salvo em {logic.obter_nome_mes_ano(data_lancamento.month, data_lancamento.year)}."
+            else:
+                aviso = "Lançamento salvo."
 
         self.tf_valor.value = ""
         self.tf_descricao.value = ""
@@ -645,14 +690,43 @@ class RegistrarView(ViewOria):
         self.data_escolhida = date.today()
         self._atualizar_data()
 
-        if not efetivada:
-            aviso = f"Lançamento agendado para {data_lancamento:%d/%m/%Y}."
-        elif (data_lancamento.year, data_lancamento.month) != (self.app.ano, self.app.mes):
-            aviso = f"Lançamento salvo em {logic.obter_nome_mes_ano(data_lancamento.month, data_lancamento.year)}."
-        else:
-            aviso = "Lançamento salvo."
         self.app.notificar(aviso)
         self.app.dados_alterados()  # atualiza as outras abas e relê os locais deste formulário
+
+    def _limpar_modo_edicao(self) -> None:
+        self._id_editando = None
+        self.titulo_form.value = "Novo lançamento"
+        self.botao_salvar.text = "Salvar lançamento"
+        self.btn_cancelar_edicao.visible = False
+
+    def cancelar_edicao(self) -> None:
+        self._limpar_modo_edicao()
+        self.tf_valor.value = ""
+        self.tf_descricao.value = ""
+        self.tf_instituicao.value = ""
+        self.data_escolhida = date.today()
+        self.categoria = "Entrada"
+        self.seletor_tipo.selected = {"Entrada"}
+        self._aplicar_tipo()
+        self._atualizar_data()
+        self.update()
+
+    def editar(self, item: logic.ItemExtrato) -> None:
+        """Preenche o formulário com os dados do item e entra no modo de edição."""
+        self._id_editando = item.id
+        self.categoria = item.categoria
+        self.seletor_tipo.selected = {item.categoria}
+        self.tf_descricao.value = item.descricao
+        # Converte float para formato BR que converter_valor() aceita
+        self.tf_valor.value = f"{item.valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        self.data_escolhida = date.fromisoformat(item.data_iso)
+        if item.categoria == "Investimento" and item.instituicao:
+            self._local_preferido = (item.instituicao, item.tipo_investimento or "")
+        self.titulo_form.value = "Editar lançamento"
+        self.botao_salvar.text = "Atualizar lançamento"
+        self.btn_cancelar_edicao.visible = True
+        self._aplicar_tipo()
+        self._atualizar_data()
 
 
 class ExtratoView(ViewOria):
@@ -701,7 +775,8 @@ class ExtratoView(ViewOria):
                 ))
             elif controles:
                 controles.append(ft.Divider(height=1, thickness=1, color=COR_LINHA))
-            controles.append(self.construir_linha(item, ao_excluir=self._pedir_exclusao))
+            controles.append(self.construir_linha(
+                item, ao_editar=self._pedir_edicao, ao_excluir=self._pedir_exclusao))
 
         if not controles:
             nome = logic.obter_nome_mes_ano(self.app.mes, self.app.ano)
@@ -725,6 +800,10 @@ class ExtratoView(ViewOria):
         self._montar_lista()
         self.linha_pilulas.update()
         self.lista.update()
+
+    @tratar_erros
+    def _pedir_edicao(self, item: logic.ItemExtrato) -> None:
+        self.app.ir_para_editar(item)
 
     @tratar_erros
     def _pedir_exclusao(self, item: logic.ItemExtrato) -> None:
@@ -1110,7 +1189,11 @@ class OriaApp:
 
         page.on_resized = lambda e: self._ajustar_layout()
         page.on_keyboard_event = self._ao_tecla
-        page.add(self.raiz)
+        page.on_route_change = self._ao_mudar_rota
+        page.on_view_pop = self._ao_voltar
+        page.views.clear()
+        page.views.append(self._visao_principal)
+        page.update()
 
     def _montar_interface(self) -> None:
         self.seletor_arquivos = ft.FilePicker(on_result=self._ao_resultado_arquivo)
@@ -1169,11 +1252,17 @@ class OriaApp:
         self.tela_bloqueio = TelaBloqueio(self)
         self.raiz = ft.SafeArea(
             expand=True, content=ft.Column([self.conteudo, self.tela_bloqueio], expand=True, spacing=0))
+        self._visao_principal = ft.View(
+            route="/", controls=[self.raiz],
+            bgcolor=FUNDO_DA_PAGINA[self.tema], padding=0,
+        )
 
     # -- tema, privacidade e layout ----------------------------------------------------
     def _aplicar_tema(self) -> None:
         self.page.theme_mode = ft.ThemeMode.DARK if self.tema == "escuro" else ft.ThemeMode.LIGHT
         self.page.bgcolor = FUNDO_DA_PAGINA[self.tema]
+        if hasattr(self, "_visao_principal"):
+            self._visao_principal.bgcolor = FUNDO_DA_PAGINA[self.tema]
 
     @tratar_erros
     def definir_tema(self, tema: str) -> None:
@@ -1222,6 +1311,8 @@ class OriaApp:
         self.barra.selected_index = indice
         self.menu_lateral.selected_index = indice
         self.seletor_mes.visible = indice in (0, 2)  # só Início e Extrato dependem do mês
+        if hasattr(self, "_visao_principal"):
+            self._visao_principal.route = self._ROTAS[indice]
         try:
             if logic.efetivar_vencidas() > 0:  # o dia virou com o app aberto
                 for aba in self.views:
@@ -1234,8 +1325,14 @@ class OriaApp:
                 self.barra.update()
                 self.menu_lateral.update()
 
+    _ROTAS = ["/", "/registrar", "/extrato", "/cofre", "/ajustes"]
+
     def ir_para_registrar(self, categoria: str) -> None:
         self.registrar.preselecionar(categoria)
+        self.mostrar_aba(1)
+
+    def ir_para_editar(self, item: logic.ItemExtrato) -> None:
+        self.registrar.editar(item)
         self.mostrar_aba(1)
 
     def _sincronizar_periodos(self) -> None:
@@ -1301,6 +1398,24 @@ class OriaApp:
         elif e.key == "Backspace":
             self.tela_bloqueio.apagar()
 
+    def _ao_mudar_rota(self, e) -> None:
+        """Sincroniza a aba ao navegar por URL externa (deep links, etc.)."""
+        rota = e.route if hasattr(e, "route") else self.page.route
+        if rota in self._ROTAS:
+            self.mostrar_aba(self._ROTAS.index(rota))
+
+    def _ao_voltar(self, e) -> None:
+        """Trata o botão Voltar do Android.
+        O Flet já removeu a visão antes de chamar este handler.
+        Se não estamos na aba Início, voltamos para lá; se já estamos,
+        deixamos a pilha vazia → o sistema Android fecha o app normalmente."""
+        if self.indice_atual != 0:
+            # Volta para a aba Início sem fechar o app
+            self._visao_principal.route = self._ROTAS[0]
+            self.page.views.append(self._visao_principal)
+            self.mostrar_aba(0)
+            self.page.update()
+
     # -- avisos e diálogos ---------------------------------------------------------------
     def notificar(self, mensagem: str, erro: bool = False) -> None:
         cor_texto = ft.Colors.ON_ERROR_CONTAINER if erro else ft.Colors.ON_INVERSE_SURFACE
@@ -1309,7 +1424,7 @@ class OriaApp:
             content=txt(mensagem, 14, 500, cor_texto),
             bgcolor=ft.Colors.ERROR_CONTAINER if erro else ft.Colors.INVERSE_SURFACE,
             behavior=ft.SnackBarBehavior.FLOATING, width=largura,
-            shape=ft.RoundedRectangleBorder(radius=14), duration=4500 if erro else 3000,
+            shape=ft.RoundedRectangleBorder(radius=14), duration=2000 if erro else 1000,
         ))
 
     def criar_dialogo(self, titulo: str, conteudo: ft.Control, acoes: list[ft.Control]) -> ft.AlertDialog:

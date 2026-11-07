@@ -1,4 +1,11 @@
+"""
+Oria · regras de negócio (casos de uso).
 
+Esta camada não importa Flet e é a única que a interface precisa conhecer:
+`main.py` fala só com `logic`, e `logic` fala com `database`. Tudo o que a tela
+recebe daqui já vem pronto (números calculados, textos formatados, erros com
+mensagem legível), então a interface não precisa de regra nenhuma.
+"""
 from __future__ import annotations
 
 import hashlib
@@ -73,7 +80,9 @@ class ItemExtrato:
     data_iso: str
     data_br: str
     efetivada: bool
-    local: Optional[str]  # "Nubank · CDB" para investimentos
+    local: Optional[str]           # "Nubank · CDB" para exibição
+    instituicao: Optional[str] = None      # para o formulário de edição
+    tipo_investimento: Optional[str] = None  # para o formulário de edição
 
 
 @dataclass(frozen=True)
@@ -217,7 +226,10 @@ def registrar_transacao(
 
     descricao = _limpar_texto(descricao)
     if not descricao:
-        raise ErroOria("Informe uma descrição.")
+        if categoria == "Investimento":
+            descricao = "Aporte"
+        else:
+            raise ErroOria("Informe uma descrição.")
     if len(descricao) > _LIMITE_DESCRICAO:
         raise ErroOria(f"A descrição pode ter até {_LIMITE_DESCRICAO} caracteres.")
 
@@ -255,10 +267,63 @@ def excluir_transacao(id_transacao: int) -> bool:
     return database.excluir_transacao(id_transacao)
 
 
+def editar_transacao(
+    id_transacao: int,
+    descricao: str,
+    valor_texto: str,
+    categoria: str,
+    data_transacao: date,
+    instituicao: str = "",
+    tipo_investimento: str = "",
+    hoje: Optional[date] = None,
+) -> bool:
+    """Valida e edita um lançamento existente. Retorna True se ficou efetivado."""
+    if categoria not in CATEGORIAS:
+        raise ErroOria("Escolha se o lançamento é entrada, gasto ou investimento.")
+
+    descricao = _limpar_texto(descricao)
+    if not descricao:
+        raise ErroOria("Informe uma descrição.")
+    if len(descricao) > _LIMITE_DESCRICAO:
+        raise ErroOria(f"A descrição pode ter até {_LIMITE_DESCRICAO} caracteres.")
+
+    valor = converter_valor(valor_texto)
+
+    if not isinstance(data_transacao, date):
+        raise ErroOria("Escolha a data do lançamento.")
+
+    instituicao = _limpar_texto(instituicao)
+    tipo_investimento = _limpar_texto(tipo_investimento)
+    if categoria == "Investimento":
+        if not instituicao:
+            raise ErroOria("Informe onde o dinheiro será guardado.")
+        if not tipo_investimento:
+            raise ErroOria("Escolha o tipo de investimento.")
+        if len(instituicao) > _LIMITE_LOCAL or len(tipo_investimento) > _LIMITE_LOCAL:
+            raise ErroOria(f"Instituição e tipo podem ter até {_LIMITE_LOCAL} caracteres.")
+    else:
+        instituicao = tipo_investimento = ""
+
+    base = _hoje(hoje)
+    result = database.editar_transacao(
+        id_transacao,
+        descricao,
+        valor,
+        categoria,
+        data_transacao.isoformat(),
+        base.isoformat(),
+        instituicao or None,
+        tipo_investimento or None,
+    )
+    return bool(result)
+
+
 def _montar_item(linha: dict) -> ItemExtrato:
+    inst = linha.get("instituicao")
+    tipo_inv = linha.get("tipo_investimento")
     local = None
-    if linha["categoria"] == "Investimento" and linha["instituicao"]:
-        local = f"{linha['instituicao']} · {linha['tipo_investimento']}"
+    if linha["categoria"] == "Investimento" and inst:
+        local = f"{inst} · {tipo_inv}"
     return ItemExtrato(
         id=linha["id"],
         descricao=linha["descricao"],
@@ -268,6 +333,8 @@ def _montar_item(linha: dict) -> ItemExtrato:
         data_br=formatar_data_br(linha["data"]),
         efetivada=bool(linha["efetivada"]),
         local=local,
+        instituicao=inst,
+        tipo_investimento=tipo_inv,
     )
 
 

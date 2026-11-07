@@ -1,4 +1,19 @@
+"""
+Oria · camada de persistência (SQLite).
 
+Responsabilidade única: conversar com o banco `oria.db`. Nada aqui conhece a
+interface (Flet) nem formata texto para o usuário; as regras de negócio ficam
+em logic.py.
+
+Pontos importantes:
+- Toda conexão é aberta por `_conexao()`, que combina `contextlib.closing` com o
+  `with conn` do sqlite3. O `with conn` só confirma/reverte a transação, ele NÃO
+  fecha a conexão; o `closing` garante o fechamento mesmo quando há exceção.
+- Falhas do SQLite viram `ErroBanco` (com mensagem legível), em vez de serem
+  engolidas num log como acontecia antes.
+- A "efetivação" de uma transação (efetivada = 1) e o crédito no Cofre acontecem
+  na mesma transação SQL, então o saldo e o patrimônio nunca ficam divergentes.
+"""
 from __future__ import annotations
 
 import functools
@@ -299,6 +314,83 @@ def excluir_transacao(id_transacao: int) -> bool:
                 (investimento_id, investimento_id),
             )
         return True
+
+
+@_traduz_erros("Não foi possível editar o lançamento.")
+def editar_transacao(
+    id_transacao: int,
+    descricao: str,
+    valor: float,
+    categoria: str,
+    data: str,
+    hoje: str,
+    instituicao: Optional[str] = None,
+    tipo_investimento: Optional[str] = None,
+) -> int:
+    """Edita um lançamento existente de forma atômica.
+
+    Estratégia: reverte o impacto da transação antiga no Cofre (se havia) e
+    aplica o novo — tudo dentro de uma única transação SQL, sem divergência.
+
+    Retorna 1 se o lançamento ficou efetivado, 0 se ficou agendado.
+    """
+    with _conexao() as conn:
+        # 1. Lê o estado atual
+        antiga = conn.execute(
+            "SELECT valor, efetivada, investimento_id FROM transacoes WHERE id = ?",
+            (id_transacao,),
+        ).fetchone()
+        if antiga is None:
+            raise ErroBanco("Lançamento não encontrado para edição.")
+
+        # 2. Reverte o impacto antigo no Cofre (apenas se estava efetivada como investimento)
+        inv_id_antigo = antiga["investimento_id"]
+        if inv_id_antigo is not None and antiga["efetivada"]:
+            conn.execute(
+                "UPDATE investimentos "
+                "SET valor_acumulado = ROUND(valor_acumulado - ?, 2) WHERE id = ?",
+                (antiga["valor"], inv_id_antigo),
+            )
+
+        # 3. Decide se a nova versão está efetivada
+        nova_efetivada = 1 if data <= hoje else 0
+
+        # 4. Resolve o investimento novo (cria se necessário)
+        inv_id_novo = None
+        if categoria == "Investimento" and instituicao and tipo_investimento:
+            inv_id_novo = _obter_ou_criar_investimento(conn, instituicao, tipo_investimento)
+
+        # 5. Atualiza o lançamento
+        conn.execute(
+            """
+            UPDATE transacoes
+               SET descricao = ?, valor = ?, categoria = ?, data = ?,
+                   efetivada = ?, investimento_id = ?
+             WHERE id = ?
+            """,
+            (descricao, valor, categoria, data, nova_efetivada, inv_id_novo, id_transacao),
+        )
+
+        # 6. Aplica o novo impacto no Cofre (se nova transação é investimento efetivado)
+        if inv_id_novo is not None and nova_efetivada:
+            conn.execute(
+                "UPDATE investimentos "
+                "SET valor_acumulado = ROUND(valor_acumulado + ?, 2) WHERE id = ?",
+                (valor, inv_id_novo),
+            )
+
+        # 7. Limpa o local antigo se ficou zerado e sem transações
+        if inv_id_antigo is not None and inv_id_antigo != inv_id_novo:
+            conn.execute(
+                """
+                DELETE FROM investimentos
+                 WHERE id = ? AND valor_acumulado < 0.005
+                   AND NOT EXISTS (SELECT 1 FROM transacoes WHERE investimento_id = ?)
+                """,
+                (inv_id_antigo, inv_id_antigo),
+            )
+
+        return nova_efetivada
 
 
 @_traduz_erros("Não foi possível carregar os lançamentos.")
