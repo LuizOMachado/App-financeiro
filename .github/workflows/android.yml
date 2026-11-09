@@ -39,7 +39,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Fabricar o Aplicativo (APK)
-        run: flet build apk --product "Oria" --org "com.luizomachado" --splash-color "#3B2A78" --splash-dark-color "#3B2A78"
+        run: flet build apk --product "Oria" --org "com.luizomachado" --splash-color "#0E0B18" --splash-dark-color "#0E0B18"
 
       - name: Publicar APK no Releases
         uses: softprops/action-gh-release@v2
