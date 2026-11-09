@@ -3,6 +3,10 @@ name: Construir e Publicar APK
 on:
   push:
     branches: [ "main", "master" ]
+    paths-ignore:
+      - 'README.md'
+      - '.gitignore'
+      - 'LICENSE'
   workflow_dispatch:
 
 jobs:
