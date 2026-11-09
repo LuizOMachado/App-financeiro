@@ -1350,6 +1350,14 @@ class OriaApp:
         self.seletor_mes.visible = indice in (0, 2)  # só Início e Extrato dependem do mês
         if hasattr(self, "_visao_principal"):
             self._visao_principal.route = self._ROTAS[indice]
+        # Gerencia pilha de views para o botão Voltar do Android.
+        # Com histórico: insere view-âncora em [0] para o Android não fechar o app.
+        # Sem histórico: remove a âncora para o Android fechar naturalmente.
+        if self._historico:
+            if len(self.page.views) == 1:
+                self.page.views.insert(0, ft.View(route="/base", bgcolor=FUNDO_DA_PAGINA[self.tema], padding=0))
+        elif len(self.page.views) > 1:
+            self.page.views.pop(0)
         try:
             if logic.efetivar_vencidas() > 0:  # o dia virou com o app aberto
                 for aba in self._cache_views:
@@ -1362,6 +1370,7 @@ class OriaApp:
                 self.pilha_views.update()
                 self.barra.update()
                 self.menu_lateral.update()
+                self.page.update()
 
     _ROTAS = ["/", "/registrar", "/extrato", "/cofre", "/ajustes"]
 
@@ -1562,6 +1571,8 @@ class OriaApp:
 
 
 def main(page: ft.Page) -> None:
+    page.bgcolor = "#0E0B18"
+    page.update()
     app = OriaApp(page)
     try:
         app.iniciar()

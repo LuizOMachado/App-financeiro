@@ -1,6 +1,6 @@
 [tool.flet.icons]
-splash_android = "assets/splash_android.jpg"
-splash_android_dark = "assets/splash_android.jpg"
+splash_android = "assets/icon.jpg"
+splash_android_dark = "assets/icon.jpg"
 
 [tool.flet.splash]
 color = "#0E0B18"
