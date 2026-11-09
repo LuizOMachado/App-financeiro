@@ -13,7 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Necessário para criar o Release automaticamente
+      contents: write 
     steps:
       - name: Pegar meus arquivos
         uses: actions/checkout@v4
@@ -39,14 +39,14 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Fabricar o Aplicativo (APK)
-        run: flet build apk --product "Oria" --org "com.luizomachado" --splash-color "#0E0B18" --splash-dark-color "#0E0B18"
+        run: flet build apk --product "Oria" --org "com.luizomachado" --splash-color "#3B2A78" --splash-dark-color "#3B2A78"
 
       - name: Publicar APK no Releases
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v2.0.${{ github.run_number }}
           name: "Oria v2.0.${{ github.run_number }}"
-          body: "Nova versão do Oria gerada automaticamente via GitHub Actions. Inclui novo design, modo escuro, Cofre e proteção por PIN."
+          body: "Nova versão do Oria gerada via GitHub Actions."
           files: build/apk/**/*.apk
           draft: false
           prerelease: false

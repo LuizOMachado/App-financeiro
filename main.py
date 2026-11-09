@@ -85,12 +85,18 @@ _NOVO_LOCAL = "__novo__"
 
 
 def criar_tema(escuro: bool) -> ft.Theme:
-    # A semente gera os papéis que não definimos (ex.: menus e calendário);
-    # o ColorScheme fixa os que formam a identidade do Oria.
+    
     return ft.Theme(
         color_scheme_seed=COR_SEMENTE,
         use_material3=True,
         color_scheme=ft.ColorScheme(**(PALETA_ESCURA if escuro else PALETA_CLARA)),
+        page_transitions=ft.PageTransitionsTheme(
+            android=ft.PageTransitionTheme.NONE,
+            ios=ft.PageTransitionTheme.NONE,
+            macos=ft.PageTransitionTheme.NONE,
+            windows=ft.PageTransitionTheme.NONE,
+            linux=ft.PageTransitionTheme.NONE,
+        ),
     )
 
 
@@ -1571,7 +1577,7 @@ class OriaApp:
 
 
 def main(page: ft.Page) -> None:
-    page.bgcolor = "#0E0B18"
+    page.bgcolor = "#4B2BA3"
     page.update()
     app = OriaApp(page)
     try:
