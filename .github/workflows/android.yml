@@ -35,9 +35,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Fabricar o Aplicativo (APK)
-        # O parâmetro --product define o nome exato que aparece debaixo do ícone no Android
-        # O parâmetro --org define a assinatura única do seu app (pode deixar como está)
-        run: flet build apk --product "Oria" --org "com.luizomachado"
+        run: flet build apk --product "Oria" --org "com.luizomachado" --splash-color "#0E0B18" --splash-dark-color "#0E0B18"
 
       - name: Publicar APK no Releases
         uses: softprops/action-gh-release@v2

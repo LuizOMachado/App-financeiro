@@ -1,0 +1,8 @@
+[tool.flet.icons]
+splash_android = "assets/splash_android.jpg"
+splash_android_dark = "assets/splash_android.jpg"
+
+[tool.flet.splash]
+color = "#0E0B18"
+dark_color = "#0E0B18"
+hide_animation = true
