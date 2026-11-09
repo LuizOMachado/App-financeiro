@@ -1,19 +1,4 @@
-"""
-Oria · camada de persistência (SQLite).
 
-Responsabilidade única: conversar com o banco `oria.db`. Nada aqui conhece a
-interface (Flet) nem formata texto para o usuário; as regras de negócio ficam
-em logic.py.
-
-Pontos importantes:
-- Toda conexão é aberta por `_conexao()`, que combina `contextlib.closing` com o
-  `with conn` do sqlite3. O `with conn` só confirma/reverte a transação, ele NÃO
-  fecha a conexão; o `closing` garante o fechamento mesmo quando há exceção.
-- Falhas do SQLite viram `ErroBanco` (com mensagem legível), em vez de serem
-  engolidas num log como acontecia antes.
-- A "efetivação" de uma transação (efetivada = 1) e o crédito no Cofre acontecem
-  na mesma transação SQL, então o saldo e o patrimônio nunca ficam divergentes.
-"""
 from __future__ import annotations
 
 import functools

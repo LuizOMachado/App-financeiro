@@ -1,20 +1,4 @@
-"""
-Oria · interface (Flet 0.25.2, Material 3).
 
-Esta camada só desenha a tela e repassa ações do usuário para `logic`; não há
-regra de negócio nem SQL aqui.
-
-Como o estado e a renderização funcionam:
-- Nada de variáveis globais: privacidade, mês, ano e tema são atributos de `OriaApp`.
-- Cada aba é um objeto (`ViewOria`) construído UMA vez. Trocar de aba só liga/desliga
-  `visible`; os dados são relidos apenas quando mudaram (`desatualizada`).
-- Mudanças pequenas atualizam só o controle afetado (texto, card, lista) com
-  `control.update()`, em vez de reconstruir a tela inteira.
-- As cores usam os papéis do tema (ft.Colors.PRIMARY, SURFACE...), então alternar
-  claro/escuro troca a paleta toda sem reconstruir nada.
-  Mapeamento semântico do tema:  secondary = entradas, error = gastos,
-  tertiary = Cofre/investimentos, primary = marca.
-"""
 from __future__ import annotations
 
 import functools
@@ -498,7 +482,7 @@ class RegistrarView(ViewOria):
         self.tf_valor = campo(
             label="Valor", prefix_text="R$ ", text_size=26,
             keyboard_type=ft.KeyboardType.NUMBER,
-            input_filter=ft.InputFilter(regex_string=r"[0-9.,]"),
+            input_filter=ft.InputFilter(regex_string=r"^[0-9.,]*$"),
         )
         self.tf_descricao = campo(label="Descrição", max_length=60)
 
@@ -521,7 +505,7 @@ class RegistrarView(ViewOria):
 
         # Só aparece para "Investimento": onde o dinheiro vai ser guardado.
         self.dd_local = lista_suspensa(label="Onde guardar", on_change=self._ao_mudar_local)
-        self.tf_instituicao = campo(label="Instituição", hint_text="Ex.: Nubank, Tesouro Direto", max_length=40)
+        self.tf_instituicao = campo(label="Instituição", hint_text="Ex.: Nubank, XP, Inter", max_length=40)
         self.dd_tipo = lista_suspensa(
             label="Tipo de investimento",
             options=[ft.dropdown.Option(t) for t in logic.TIPOS_INVESTIMENTO],
@@ -1144,6 +1128,31 @@ class TelaBloqueio(ft.Container):
 class OriaApp:
     """Dono do estado da interface e das ações que atravessam várias abas."""
 
+    # Ordem fixa: índice 0=Início, 1=Registrar, 2=Extrato, 3=Cofre, 4=Ajustes
+    _CLASSES_VIEWS = [InicioView, RegistrarView, ExtratoView, CofreView, AjustesView]
+
+    # -- propriedades de acesso nomeado (acionam lazy loading automaticamente) ---------
+    @property
+    def inicio(self) -> "InicioView":
+        """Sempre pré-carregada (índice 0)."""
+        return self._cache_views[0]
+
+    @property
+    def registrar(self) -> "RegistrarView":
+        return self._obter_aba(1)
+
+    @property
+    def extrato(self) -> "ExtratoView":
+        return self._obter_aba(2)
+
+    @property
+    def cofre(self) -> "CofreView":
+        return self._obter_aba(3)
+
+    @property
+    def ajustes(self) -> "AjustesView":
+        return self._obter_aba(4)
+
     def __init__(self, page: ft.Page):
         self.page = page
         hoje = date.today()
@@ -1156,6 +1165,9 @@ class OriaApp:
         self.largura_pagina = LARGURA_MAXIMA_CONTEUDO
         self._layout_aplicado: Optional[tuple[bool, int]] = None
         self._acao_arquivo: Optional[str] = None
+        self._historico: list[int] = []       # pilha de índices de abas visitadas
+        self._navegando_back: bool = False    # flag: evita duplo push ao voltar
+        self._cache_views: list = [None] * 5  # None = view ainda não instanciada
 
     # -- inicialização ---------------------------------------------------------------
     def iniciar(self) -> None:
@@ -1199,12 +1211,9 @@ class OriaApp:
         self.seletor_arquivos = ft.FilePicker(on_result=self._ao_resultado_arquivo)
         self.page.overlay.append(self.seletor_arquivos)
 
-        self.inicio = InicioView(self)
-        self.registrar = RegistrarView(self)
-        self.extrato = ExtratoView(self)
-        self.cofre = CofreView(self)
-        self.ajustes = AjustesView(self)
-        self.views = [self.inicio, self.registrar, self.extrato, self.cofre, self.ajustes]
+        inicio = InicioView(self)              # única view construída no cold start
+        inicio.visible = True
+        self._cache_views[0] = inicio
 
         rotulos = [
             ("Início", ft.Icons.HOME_OUTLINED, ft.Icons.HOME_ROUNDED),
@@ -1246,7 +1255,7 @@ class OriaApp:
         )
 
         self.seletor_mes = SeletorMes(self)
-        self.pilha_views = ft.Column(controls=self.views, expand=True, spacing=0)
+        self.pilha_views = ft.Column(controls=[self._cache_views[0]], expand=True, spacing=0)
         coluna = ft.Column([cabecalho, self.seletor_mes, self.pilha_views, self.barra], expand=True, spacing=0)
         self.conteudo = ft.Row([self.menu_lateral, ft.Container(coluna, expand=True)], expand=True, spacing=0)
         self.tela_bloqueio = TelaBloqueio(self)
@@ -1256,6 +1265,24 @@ class OriaApp:
             route="/", controls=[self.raiz],
             bgcolor=FUNDO_DA_PAGINA[self.tema], padding=0,
         )
+
+    def _obter_aba(self, indice: int):
+        """Retorna a view do índice, construindo-a sob demanda na primeira visita.
+
+        Regras:
+        • Se já está no cache → devolve diretamente (zero custo).
+        • Se é a primeira visita → instancia, configura a largura atual, insere
+          na pilha invisível e atualiza o widget se a UI já estiver montada.
+        """
+        if self._cache_views[indice] is None:
+            view = self._CLASSES_VIEWS[indice](self)
+            view.visible = False
+            view.definir_largura(self.largura_pagina)
+            self._cache_views[indice] = view
+            self.pilha_views.controls.append(view)
+            if self.pilha_views.page:          # UI já montada → sincroniza o Column
+                self.pilha_views.update()
+        return self._cache_views[indice]
 
     # -- tema, privacidade e layout ----------------------------------------------------
     def _aplicar_tema(self) -> None:
@@ -1280,7 +1307,7 @@ class OriaApp:
             ft.Icons.VISIBILITY_OFF_OUTLINED if self.privacidade else ft.Icons.VISIBILITY_OUTLINED)
         self.btn_privacidade.tooltip = "Mostrar valores" if self.privacidade else "Ocultar valores"
         self.btn_privacidade.update()
-        aba = self.views[self.indice_atual]
+        aba = self._cache_views[self.indice_atual]
         aba.ao_exibir()  # só redesenha os textos de valor da aba visível
         aba.update()
 
@@ -1297,17 +1324,27 @@ class OriaApp:
         self._layout_aplicado = chave
         self.menu_lateral.visible = largo
         self.barra.visible = not largo
-        for aba in self.views:
-            aba.definir_largura(self.largura_pagina)
+        for aba in self._cache_views:
+            if aba is not None:
+                aba.definir_largura(self.largura_pagina)
         if atualizar and self.conteudo.page:
             self.conteudo.update()
 
     # -- navegação e dados -------------------------------------------------------------
     @tratar_erros
     def mostrar_aba(self, indice: int, atualizar: bool = True) -> None:
+        # Registra a aba atual no histórico antes de sair dela,
+        # mas só quando a troca é iniciada pelo usuário (não pelo botão Voltar).
+        if indice != self.indice_atual and not self._navegando_back:
+            self._historico.append(self.indice_atual)
+            if len(self._historico) > 15:   # limite razoável de memória
+                self._historico.pop(0)
         self.indice_atual = indice
-        for posicao, aba in enumerate(self.views):
-            aba.visible = posicao == indice
+        aba_alvo = self._obter_aba(indice)          # cria sob demanda se for 1ª visita
+        for aba in self._cache_views:               # esconde todas as views já carregadas
+            if aba is not None:
+                aba.visible = False
+        aba_alvo.visible = True
         self.barra.selected_index = indice
         self.menu_lateral.selected_index = indice
         self.seletor_mes.visible = indice in (0, 2)  # só Início e Extrato dependem do mês
@@ -1315,9 +1352,10 @@ class OriaApp:
             self._visao_principal.route = self._ROTAS[indice]
         try:
             if logic.efetivar_vencidas() > 0:  # o dia virou com o app aberto
-                for aba in self.views:
-                    aba.desatualizada = True
-            self.views[indice].ao_exibir()
+                for aba in self._cache_views:
+                    if aba is not None:
+                        aba.desatualizada = True
+            aba_alvo.ao_exibir()
         finally:
             if atualizar and self.conteudo.page:
                 self.seletor_mes.update()
@@ -1351,26 +1389,29 @@ class OriaApp:
         if novo == atual:
             return
         self.ano, self.mes = self.periodos[novo]
-        self.inicio.desatualizada = True
-        self.extrato.desatualizada = True
+        self._cache_views[0].desatualizada = True           # início: sempre carregada
+        if self._cache_views[2] is not None:                # extrato: só se já foi aberta
+            self._cache_views[2].desatualizada = True
         self.seletor_mes.atualizar()
-        self.views[self.indice_atual].recarregar()
+        self._cache_views[self.indice_atual].recarregar()
 
     @tratar_erros
     def dados_alterados(self) -> None:
         """Chamado depois de salvar/excluir: marca todas as abas como desatualizadas e
         relê agora só a que está na tela; as outras releem quando forem abertas."""
         self._sincronizar_periodos()
-        for aba in self.views:
-            aba.desatualizada = True
+        for aba in self._cache_views:               # só abas já carregadas recebem a flag
+            if aba is not None:
+                aba.desatualizada = True
         self.seletor_mes.atualizar()
-        self.views[self.indice_atual].recarregar()
+        self._cache_views[self.indice_atual].recarregar()
 
     # -- PIN e bloqueio ----------------------------------------------------------------
     def seguranca_alterada(self) -> None:
         self.btn_bloquear.visible = logic.pin_configurado()
         self.btn_bloquear.update()
-        self.ajustes.recarregar()
+        if self._cache_views[4] is not None:        # AjustesView: só atualiza se já foi aberta
+            self._cache_views[4].recarregar()
 
     def bloquear(self) -> None:
         if not logic.pin_configurado():
@@ -1406,15 +1447,30 @@ class OriaApp:
 
     def _ao_voltar(self, e) -> None:
         """Trata o botão Voltar do Android.
-        O Flet já removeu a visão antes de chamar este handler.
-        Se não estamos na aba Início, voltamos para lá; se já estamos,
-        deixamos a pilha vazia → o sistema Android fecha o app normalmente."""
-        if self.indice_atual != 0:
-            # Volta para a aba Início sem fechar o app
-            self._visao_principal.route = self._ROTAS[0]
-            self.page.views.append(self._visao_principal)
-            self.mostrar_aba(0)
-            self.page.update()
+
+        O Flet já removeu a visão antes de chamar este handler, portanto
+        page.views está temporariamente vazio. Duas situações possíveis:
+
+        • Há histórico → reinsere a visão (o bgcolor igual ao da página torna
+          o único frame "vazio" imperceptível) e navega para a aba anterior.
+        • Histórico vazio → não reinsere nada; a pilha fica vazia e o Android
+          fecha o app naturalmente.
+        """
+        if not self._historico:
+            return  # deixa o Android encerrar o app
+
+        # Reinsere a visão antes de qualquer update (evita flash: same bgcolor)
+        self.page.views.append(self._visao_principal)
+
+        # Navega para a aba anterior sem registrar no histórico
+        indice_anterior = self._historico.pop()
+        self._navegando_back = True
+        try:
+            self.mostrar_aba(indice_anterior)
+        finally:
+            self._navegando_back = False
+
+        self.page.update()
 
     # -- avisos e diálogos ---------------------------------------------------------------
     def notificar(self, mensagem: str, erro: bool = False) -> None:
@@ -1424,7 +1480,7 @@ class OriaApp:
             content=txt(mensagem, 14, 500, cor_texto),
             bgcolor=ft.Colors.ERROR_CONTAINER if erro else ft.Colors.INVERSE_SURFACE,
             behavior=ft.SnackBarBehavior.FLOATING, width=largura,
-            shape=ft.RoundedRectangleBorder(radius=14), duration=2000 if erro else 1000,
+            shape=ft.RoundedRectangleBorder(radius=14), duration=2000 if erro else 1000
         ))
 
     def criar_dialogo(self, titulo: str, conteudo: ft.Control, acoes: list[ft.Control]) -> ft.AlertDialog:
@@ -1494,8 +1550,9 @@ class OriaApp:
         self._sincronizar_periodos()
         self.seletor_mes.atualizar()
         self.btn_bloquear.visible = logic.pin_configurado()
-        for aba in self.views:
-            aba.desatualizada = True
+        for aba in self._cache_views:
+            if aba is not None:
+                aba.desatualizada = True
         if logic.pin_configurado():
             self.bloquear()
         else:

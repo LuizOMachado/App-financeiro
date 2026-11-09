@@ -1,11 +1,4 @@
-"""
-Oria · regras de negócio (casos de uso).
 
-Esta camada não importa Flet e é a única que a interface precisa conhecer:
-`main.py` fala só com `logic`, e `logic` fala com `database`. Tudo o que a tela
-recebe daqui já vem pronto (números calculados, textos formatados, erros com
-mensagem legível), então a interface não precisa de regra nenhuma.
-"""
 from __future__ import annotations
 
 import hashlib
