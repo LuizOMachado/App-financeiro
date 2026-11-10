@@ -1571,21 +1571,6 @@ class OriaApp:
 
 
 def main(page: ft.Page) -> None:
-    # 1. Use a mesma cor de fundo da sua splash screen nativa
-    page.bgcolor = "#3B2A78" 
-    page.padding = 0
-    
-    # 2. Desenha a "falsa splash screen" e joga na tela IMEDIATAMENTE
-    page.add(
-        ft.Container(
-            content=txt("Oria", 40, 800, BRANCO, espacamento=-1),
-            alignment=ft.alignment.center,
-            expand=True,
-        )
-    )
-    page.update() # É aqui que a mágica acontece. A tela exibe o logo e mascara o loading.
-
-    # 3. Agora sim, o app faz a leitura pesada do banco de dados por baixo dos panos
     app = OriaApp(page)
     try:
         app.iniciar()
@@ -1601,6 +1586,8 @@ def main(page: ft.Page) -> None:
                      "continuam no arquivo oria.db.", 14, 400, COR_SUAVE)],
                 spacing=12),
         )))
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.ERROR, format="%(asctime)s - Oria - %(levelname)s - %(message)s")
     ft.app(target=main)
